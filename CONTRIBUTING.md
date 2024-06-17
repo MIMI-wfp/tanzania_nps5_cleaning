@@ -12,24 +12,15 @@ Whilst every effort has been made to ensure that these guidelines are as detaile
 
 If you would like to contribute to the MIMI project, please reach out to us at [HQ.MIMIGitHub@wfp.org](HQ.MIMIGitHub@wfp.org) to discuss your proposeed contribution, and to arrange contributor access our repositories.
 
+
 ### Cloning a MIMI repository
 
 So that you can start contributing to a MIMI repository, you may wish to clone the repository to your local machine or cloud hosted development environment. To do so, please follow the these [instructions](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository). If you use the GitHub Desktop app, you can alternatively follow these [instructions](https://docs.github.com/en/desktop/adding-and-cloning-repositories/cloning-a-repository-from-github-to-github-desktop).
 
-### Repository structure
-
-The structure of this repository is outlined in the [README.md](https://github.com/kmtang/MIMI/blob/main/README.md#introducing-the-mimi-github-repository) file. As explained, it's organised into 4 sub-sections: 
-
-* `data_constrained` - Projects relating to MIMI data-constrained contexts<br>
-* `data_rich` - Projects relating to MIMI data-rich contexts<br>
-* `training` - Code and materials used for training and workshops<br>
-* `universal_functions` - Code and functions applicable across all projects, regardless of context
-
-Please ensure that your contributions are pushed to most relevant section of the repository, if you are unsure, please discuss with the MIMI team.
 
 ### Branches
 
-The main branch in this repository should only contain finalised and clean code, therefore please do not commit your changes directly to the main branch!
+The main branch of MIMI repositories should only contain finalised and clean code, therefore please do not commit your changes directly to the main branch!
 
 Therefore please create a new branch for any code that is a work in progress, and name your branch according to the following naming convention: `author_keyword1_keyword2`
 
@@ -43,9 +34,10 @@ If you would like to learn more about branches, please read the following [docum
 
 Once you are happy that the code in your branch is ready to be merged into the main branch, please submit a pull request.
 
+
 ### Submitting pull requests
 
-To start a pull request. Firstly "push" the branch that you have been working on. Now go to the MIMI GitHub repository, you should see your branch appear at the top of the page next to a green button labelled "Compare & pull request".
+To start a pull request. Firstly "push" the branch that you have been working on. Now go to the repository you are working on, you should see your branch appear at the top of the page next to a green button labelled "Compare & pull request".
 
 <p align="center">
 <img width="700" alt="Submit a pull request" src="https://github.com/kmtang/MIMI/assets/90572354/3790d37e-21ff-4126-aa3b-44609b028937">
@@ -58,6 +50,7 @@ If you have request a review from someone, please make sure that you inform them
 ![Screenshot 2024-03-29 at 12 59 27](https://github.com/kmtang/MIMI/assets/90572354/a949bc29-ab41-45f5-a000-7821cd04fd72)
 
 Once you are happy with everything, click "Create pull request"
+
 
 ### Merging pull requests
 
@@ -83,6 +76,6 @@ If you would like to learn more about pull requests, please read the following [
 
 ### Summary
 
-These guidelines have outlined a standardised workflow for contributing to the MIMI repository. By following these guidelines, we can ensure that our repository remains tidy and functional, whilst also ensuring that collaboration with other team members is as smooth and streamlined as possible.
+These guidelines have outlined a standardised workflow for contributing MIMI repositories. By following these guidelines, we can ensure that our repositories remains tidy and functional, whilst also ensuring that collaboration with other team members is as smooth and streamlined as possible.
 
 If you have any suggestions for how we can improve our workflow, we would love to hear them! Thank you for your contributions! 
