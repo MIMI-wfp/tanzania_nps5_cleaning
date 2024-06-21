@@ -52,5 +52,6 @@ rsconnect/
 *.DS_Store
 
 # Data files: 
+raw_data/
 data/
 *.csv
