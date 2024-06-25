@@ -4,7 +4,7 @@
 
 # Author: Mo Osman
 # Date created: 17-06-2024
-# Last edited: 
+# Last edited: 24-06-2024
 
 # In this script, I will calculate AFE for households in the Tanzania NPS-5 survey:
 # https://microdata.worldbank.org/index.php/catalog/5639/data-dictionary
@@ -52,22 +52,89 @@ anthropometric <- read_csv("raw_data/hh_sec_v.csv") %>%
 demographic <- read_csv("raw_data/hh_sec_b.csv") %>%
   rename(sex = hh_b02,
          age = hh_b04,
-         eat7d = hh_b07, # Individuals consuming foods in the last 7-days
-         moid = hh_b15_2) %>% # Biological mothers of children <2 years
-  select(y5_hhid, indidy5, sex, age, eat7d, moid)
+         eat7d = hh_b07, 
+         moid = hh_b15_2) %>% # Mother ID
+  select(y5_hhid, indidy5, sex, age, eat7d, moid) %>% 
+  filter(eat7d == 1) # individuals eating at home in last 7-days
 
 #-------------------------------------------------------------------------------
 
-# ESTIMATING ENERGY REQUIREMENTS AND AFE's FOR THOSE AGED < 24-months:
+# IDENTIFY INDIVUDUALS FALLING INTO EACH DEMOGRAPHIC GROUP:
 
-# Read in data where child's age (in months is available): 
-u2 <- read_csv("raw_data/npsy5.child.anthro.csv")
+# CHILDREN UNDER 2: 
+u2 <- demographic %>% 
+  filter(age < 2)
 
-# Filter only for those that have consumed food in the last 7-days at home: 
+# Get age in months: 
+u2_age <- read_csv("raw_data/npsy5.child.anthro.csv")
+
 u2 <- u2 %>% 
-  left_join(demographic, by= c('y5_hhid', 'indidy5')) %>%
-  filter(eat7d == 1) %>% 
-  select(y5_hhid, indidy5, age_months)
+  left_join(u2_age, by= c('y5_hhid', 'indidy5')) %>%
+  select(y5_hhid, indidy5, age_months, age) %>% 
+  # Many have missing age in-months, if so, calculate using age in years:
+  mutate(age_months = ifelse(is.na(age_months), age*12, age_months))
+
+rm(u2_age)
+
+# LACTATING WOMEN: 
+demographic_lact <- demographic %>%
+  left_join(u2, by = c('y5_hhid', 'indidy5')) %>%
+  dplyr::select(y5_hhid, indidy5, sex, age_months, moid, eat7d) %>% 
+  # For children under 2, mark the mother as lactating:
+  mutate(lact_m = ifelse(age_months <= 23, moid, NA)) %>% 
+  mutate(infant_age = ifelse(age_months <= 6, "<6months",
+                             ifelse(age_months > 6, ">6months", NA))) %>%
+  filter(!is.na(lact_m)) %>% 
+  dplyr::select(y5_hhid, lact_m, infant_age) %>% 
+  rename(indidy5 = lact_m) %>% 
+  # Note that some mothers may have more than one child under 2, therefore 
+  # de-duplicate and indicate the number of children in each age category: 
+  group_by(y5_hhid, indidy5) %>%
+  summarise(under6_months = sum(infant_age == "<6months"),
+            over6_months = sum(infant_age == ">6months")) %>% 
+  # Join rest of demographic data that is required: 
+  left_join(demographic %>% dplyr::select(y5_hhid, indidy5, sex, age),
+            by = c('y5_hhid', 'indidy5')) %>%
+  filter(age <= 53) # Specify max age as 53.
+
+# PREGNANT WOMEN: 
+# Read in pregnancy data:
+pregnant <- read_csv("raw_data/hh_sec_d.csv") %>% 
+  dplyr::select(y5_hhid, indidy5, hh_d36a) %>% 
+  rename(pregnant = hh_d36a) %>% 
+  filter(pregnant == 1) 
+  
+# Attach demographic data:
+demographic_preg <- pregnant %>% 
+  inner_join(demographic %>% dplyr::select(y5_hhid, indidy5, age, sex), 
+            by = c("y5_hhid", "indidy5")) %>% 
+  dplyr::select(-c("pregnant")) 
+
+rm(pregnant)
+
+# WOMEN THAT ARE BOTH PREGNANT AND LACTATING: 
+demographic_preg_lact <- demographic_lact %>% 
+  dplyr::select(y5_hhid, indidy5, under6_months, over6_months) %>%
+  inner_join(demographic_preg, by = c("y5_hhid", "indidy5"))
+
+# Ensure that these women are removed from the demographic_lact and demographic_preg subsets, 
+# as energy requirements will need to be calculated separately:
+demographic_lact <- demographic_lact %>% 
+  anti_join(demographic_preg_lact, by = c("y5_hhid", "indidy5"))
+
+demographic_preg <- demographic_preg %>%
+  anti_join(demographic_preg_lact, by = c("y5_hhid", "indidy5"))
+
+# DEMOGRAPHIC ALL OTHERS: 
+demographic_others <- demographic %>% 
+  anti_join(u2, by = c("y5_hhid", "indidy5")) %>% 
+  anti_join(demographic_lact, by = c("y5_hhid", "indidy5")) %>% 
+  anti_join(demographic_preg, by = c("y5_hhid", "indidy5")) %>% 
+  anti_join(demographic_preg_lact, by = c("y5_hhid", "indidy5"))
+
+#-------------------------------------------------------------------------------
+
+# ESTIMATE ENERGY REQUIREMENTS AND AFE's FOR THOSE AGED < 24-months:
 
 # Assign energy requirements for different age groups: 
 u2 <- u2 %>%
@@ -76,60 +143,46 @@ u2 <- u2 %>%
     age_months >= 3 & age_months <= 5 ~ 76,  # energy from food is 76kcal per day for 3-5 months of age
     age_months >= 6 & age_months <= 8 ~ 269,  # 269kcal per day for 6-8 months of age
     age_months >= 9 & age_months <= 11 ~ 451,   # 451kcal per day for 9-11 months of age
-    age_months >= 12 & age_months <= 23 ~ 746)) %>%  # 746kcal per day for 12-23 months of age
-  filter(age_months<=23)  # select children below 24 months
+    age_months >= 12 ~ 746)) # 746kcal per day for those aged 12-months - 2years
 
 # AFE calculation for children below 2 years old:
 afeu2 <- u2 %>%
-  mutate(afeu2 = kcalreq/2346) %>% # 1AFE = 2346kcal
-  select(y5_hhid, indidy5, afeu2)
+  mutate(afe = kcalreq/2291) %>% # 1AFE = 2291kcal
+  select(y5_hhid, indidy5, afe)
 
-# CHECK THE VALUES ABOVE
-
-# Keep age for under 2's as this will be used later when calculating energy 
-# requirements of lactating mothers: 
-u2 <- u2 %>% dplyr::select(-kcalreq)
+rm(u2)
 
 #-------------------------------------------------------------------------------
 
-# ESTIMATING ENERGY REQUIREMENT FOR THOSE AGED >2YEARS:
-
-# Merge anthropometric and demographic data and use this merged data-set for the
-# calculation of total energy expenditure (TEE):
+# ESTIMATING TEE FOR THOSE AGED >2YEARS:
 
 tee_calc <- left_join(anthropometric, demographic, by= c('y5_hhid', 'indidy5')) %>%
-  group_by(sex, age) %>% # Calculate mean weight for age groups that have data available
+  group_by(sex, age) %>% # Calculate mean weight using available data for under 15's
   summarise(meanw = mean(weight, na.rm=TRUE)) %>%
-  # Assign average weight for men and women >15 years old (as this data was not 
-  # collected for men >15, and there were extreme outliers in the women's data)
-  mutate(meanw = ifelse(age >= 15 & sex == 1, 65, 
-                        ifelse(age >= 15 & sex == 2, 55, meanw))) %>%
-  # Remove under 2's as these will have a seperate calculation: 
+  mutate(meanw = ifelse(age >= 15 & sex == 1, 65, # Assumed average weight of men = 65kg
+                        ifelse(age >= 15 & sex == 2, 55, meanw))) %>% # Assumed average weight of women = 55kg
+  # Remove under 2's as these have already been calculated above: 
   filter(age >= 2) %>% 
   # Set a PAL at 1.76 for all over 18's:
   mutate(PAL = ifelse(age > 18, 1.76, NA))
 
-# TEE FOR CHILDREN (2-18 years old) (Table 4.2 and 4.3 in FAO/WHO/UNU (2004)):
+# TEE FOR CHILDREN (2-18 years old) (formula from table 4.2 and 4.3 in FAO/WHO/UNU (2004)):
 tee_calc <- tee_calc %>% 
   mutate(TEE = ifelse(sex == 1 & age <= 18, 1.298 + (0.265 * meanw) - 0.0011 * (meanw^2), 
                       ifelse(sex == 2 & age <= 18, 1.102 + (0.273 * meanw) - 0.0019 * (meanw^2), NA))) %>% 
   mutate(TEE = TEE * 239.005736) # convert to kcal/day: 
 
-# TEE FOR ADULTS (Table 5.2 in FAO/WHO/UNU (2004)):
-# Firstly need to calculate BMR for different age categories: 
+# TEE FOR ADULTS (Formula from table 5.2 in FAO/WHO/UNU (2004)):
 tee_calc <- tee_calc %>% 
-  mutate(BMR = case_when(
+  mutate(BMR = case_when( # Firstly need to calculate BMR for different age categories:
     sex == 1 & age >18 & age <= 30 ~ 15.057 * meanw + 692.2,
     sex == 1 & age >30 & age < 60 ~ 11.472 * meanw + 873.1,
     sex == 1 & age >= 60 ~ 11.711 * meanw + 587.7,
     sex == 2 & age >18 & age <= 30 ~ 14.818 * meanw + 486.6,
     sex == 2 & age >30 & age < 60 ~ 8.126 * meanw + 845.6, 
     sex == 2 & age >= 60 ~ 9.082 * meanw + 658.5,
-    TRUE ~ NA)) 
-
-# Get TEE by multiplying BMR by PAL for over 18's: 
-tee_calc <- tee_calc %>% 
-  mutate(TEE = ifelse(age > 18, BMR * PAL, TEE))
+    TRUE ~ NA)) %>% # Get TEE by multiplying BMR by PAL for over 18's: 
+  mutate(TEE = ifelse(age > 18, BMR * PAL, TEE)) # 
 
 #-------------------------------------------------------------------------------
 
@@ -137,7 +190,6 @@ tee_calc <- tee_calc %>%
 # ***** TO REVISIT *****
 
 # Weights are recorded in an unclear manner in the DHS - Revist: 
-
 # dhs <- read_dta("raw_data/TZHR82DT/TZHR82FL.dta")
 # 
 # # Extract weight variables for men from Tanzania DHS: 
@@ -154,85 +206,65 @@ tee_calc <- tee_calc %>%
 #                 starts_with("hb1_"),
 #                 starts_with("hb2_"))
 
-
 #-------------------------------------------------------------------------------
 
-# ENERGY REQUIREMENT FOR LACTATING WOMEN - IDENTIFY LACTATING WOMEN:
+# ENERGY REQUIREMENT FOR LACTATING WOMEN:
 
-# Get demographic info of lactating mothers: 
-# (Mothers assumed to be lactating if they have children under 2 years old) 
-
-demographic_lact <- demographic %>%
-  left_join(u2, by = c('y5_hhid', 'indidy5')) %>%
-  dplyr::select(y5_hhid, indidy5, sex, age_months, moid, eat7d) %>%
-  filter(eat7d == 1) %>% # Women that consumed foods in last 7-days
-  # For children under 2, mark the mother as lactating:
-  mutate(lact_m = ifelse(age_months <= 23, moid, NA)) %>%
-  mutate(infant_age = ifelse(age_months <= 6, "<6months",
-                             ifelse(age_months > 6, ">6months", NA))) %>%
-  filter(!is.na(lact_m)) %>% 
-  dplyr::select(y5_hhid, lact_m, infant_age) %>% 
-  rename(indidy5 = lact_m) %>% # rename lact_m to indidy5 before merging demographic data
-  left_join(demographic %>% dplyr::select(y5_hhid, indidy5, sex, age),
-            by = c('y5_hhid', 'indidy5')) %>%
-  filter(age <= 53) # Specify max age as 53.
-
-# Calculate the energy requirements for these lactating women: 
+# Calculate the energy requirements for these lactating women (Chapter 7 in FAO/WHO/UNU (2004)):
 # Usual energy requirements + 505kcal/day for women with babies <6 months old
 # Usual energy requirements +460kcal/day for women with babies >6 months old
-# (Chapter 7 in FAO/WHO/UNU (2004)):
 
 afe_lact <- demographic_lact %>% 
   left_join(tee_calc %>% dplyr::select(sex, age, TEE),
             by = c("sex", "age")) %>%
-  mutate (TEE = case_when(infant_age == "<6months" ~ TEE + 505,
-                          infant_age == ">6months" ~ TEE + 460,
-                          TRUE ~ TEE)) %>%
-  mutate(afe = TEE / 2291) # AFE = Total energy expenditure / 2291kcal/day
+  mutate (TEE = TEE + under6_months*505 + over6_months*460) %>%
+  mutate(afe = TEE / 2291) %>% # AFE = Total energy expenditure / 2291kcal/day
+  dplyr::select(y5_hhid, indidy5, afe)
 
-rm(demographic_lact, u2)
+rm(demographic_lact)
 
 #-------------------------------------------------------------------------------
 
-# ENERGY REQUIREMENT FOR PREGNANT WOMEN: 
+# ENERGY REQUIREMENTS FOR PREGNANT WOMEN: 
 
-# Identify pregnant women: 
-pregnant <- read_csv("raw_data/hh_sec_d.csv") %>% 
-  dplyr::select(y5_hhid, indidy5, hh_d36a) %>% 
-  rename(pregnant = hh_d36a) %>% 
-  filter(pregnant == 1)
-
-# Attach demographic data:
-demographic_preg <- pregnant %>% 
-  left_join(demographic %>% dplyr::select(y5_hhid, indidy5, age, sex, eat7d), 
-            by = c("y5_hhid", "indidy5")) %>% 
-  filter(eat7d == 1) %>% # Filter for women who ate at home in last 7-days
-  dplyr::select(-c("pregnant", "eat7d"))
-
-# Calculate energy requirments for these pregant women: 
-# Usual energy requirements +275kcal/day: 
 afe_preg <- demographic_preg %>% 
   left_join(tee_calc %>% dplyr::select(sex, age, TEE),
             by = c("sex", "age")) %>% 
-  mutate(TEE = TEE + 275) %>% 
-  mutate(afe = TEE / 2291) # AFE = Total energy expenditure / 2291kcal/day
+  mutate(TEE = TEE + 275) %>% # Usual energy requirements +275kcal/day: 
+  mutate(afe = TEE / 2291) %>%  # AFE = Total energy expenditure / 2291kcal/day
+  dplyr::select(y5_hhid, indidy5, afe)
 
+#-------------------------------------------------------------------------------
+
+# ENERGY REQUIREMENT FOR PREGNANT AND LACTATING WOMEN: 
+
+afe_preg_lact <- demographic_preg_lact %>% 
+  left_join(tee_calc %>% dplyr::select(sex, age, TEE), 
+            by = c("sex", "age")) %>% 
+  mutate(TEE = TEE + 275 + under6_months*505 + over6_months*460) %>%
+  mutate(afe = TEE / 2291) %>%  # AFE = Total energy expenditure / 2291kcal/day
+  dplyr::select(y5_hhid, indidy5, afe)
 
 #-------------------------------------------------------------------------------
 
 # CALCULATE AFE FOR ALL OTHER INDIVIDUALS: 
-afe_other <- demographic %>% 
-  dplyr::select(y5_hhid, indidy5, sex, age) %>% 
+afe_other <- demographic_others %>% 
   left_join(tee_calc %>% dplyr::select(age, sex, TEE), 
             by = c("age", "sex")) %>% 
-  # FILTER OUT UNDER 2'S, AND PREGNANT AND LACTATING WOMEN!!!
-  mutate(afe = TEE / 2291) # AFE = Total energy expenditure / 2291kcal/day
+  # Calculate AFE:
+  mutate(afe = TEE / 2291) %>%  # AFE = Total energy expenditure / 2291kcal/day
+  dplyr::select(y5_hhid, indidy5, afe)
 
 #-------------------------------------------------------------------------------
 
 # CALCULATE TOTAL AFE PER HOUSEHOLD: 
 
+hh_afe <- bind_rows(afeu2, afe_lact, afe_preg, afe_preg_lact, afe_other) %>% 
+  group_by(y5_hhid) %>% 
+  summarise(afe = sum(afe, na.rm = TRUE))
 
-#-------------------------------------------------------------------------------
+rm(list = ls()[!ls() %in% c("hh_afe")])
 
-rm(list = ls())
+################################################################################
+############################### END OF SCRIPT ##################################
+################################################################################

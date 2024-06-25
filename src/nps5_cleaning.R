@@ -27,7 +27,7 @@ rm(list= c("rq_packages", "installed_packages"))
 #-------------------------------------------------------------------------------
 
 # Calculate AFE for households in survey: 
-
+source("src/afe_calculation.R")
 
 #-------------------------------------------------------------------------------
 
