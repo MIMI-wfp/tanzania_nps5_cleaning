@@ -34,7 +34,8 @@ options(scipen = 10, digits = 3)
 # Average men's weight = 65kg (Assumed - HOWEVER need to revisit)
 # Average women's weight = 55kg (Assumed - HOWEVER need to revisit)
 
-# Average energy cost of lactation = 505kcal - reference:
+# Average energy cost of lactation = 505kcal for first 6-months of lactation
+# 460kcal after 6-months of lactation (Chapter 7 in FAO/WHO/UNU (2004))
 
 # Average total energy cost of a preganancy = 77,100kcal (reference: table 6.3 FAO/WHO/UNU (2004))
 # Average length of a pregnancy = 280days
@@ -209,10 +210,6 @@ tee_calc <- tee_calc %>%
 #-------------------------------------------------------------------------------
 
 # ENERGY REQUIREMENT FOR LACTATING WOMEN:
-
-# Calculate the energy requirements for these lactating women (Chapter 7 in FAO/WHO/UNU (2004)):
-# Usual energy requirements + 505kcal/day for women with babies <6 months old
-# Usual energy requirements +460kcal/day for women with babies >6 months old
 
 afe_lact <- demographic_lact %>% 
   left_join(tee_calc %>% dplyr::select(sex, age, TEE),
