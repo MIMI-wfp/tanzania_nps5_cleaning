@@ -113,25 +113,11 @@ demographic_preg <- pregnant %>%
 
 rm(pregnant)
 
-# WOMEN THAT ARE BOTH PREGNANT AND LACTATING: 
-demographic_preg_lact <- demographic_lact %>% 
-  dplyr::select(y5_hhid, indidy5, under6_months, over6_months) %>%
-  inner_join(demographic_preg, by = c("y5_hhid", "indidy5"))
-
-# Ensure that these women are removed from the demographic_lact and demographic_preg subsets, 
-# as energy requirements will need to be calculated separately:
-demographic_lact <- demographic_lact %>% 
-  anti_join(demographic_preg_lact, by = c("y5_hhid", "indidy5"))
-
-demographic_preg <- demographic_preg %>%
-  anti_join(demographic_preg_lact, by = c("y5_hhid", "indidy5"))
-
 # DEMOGRAPHIC ALL OTHERS: 
 demographic_others <- demographic %>% 
   anti_join(u2, by = c("y5_hhid", "indidy5")) %>% 
   anti_join(demographic_lact, by = c("y5_hhid", "indidy5")) %>% 
-  anti_join(demographic_preg, by = c("y5_hhid", "indidy5")) %>% 
-  anti_join(demographic_preg_lact, by = c("y5_hhid", "indidy5"))
+  anti_join(demographic_preg, by = c("y5_hhid", "indidy5"))
 
 #-------------------------------------------------------------------------------
 
@@ -233,17 +219,6 @@ afe_preg <- demographic_preg %>%
 
 #-------------------------------------------------------------------------------
 
-# ENERGY REQUIREMENT FOR PREGNANT AND LACTATING WOMEN: 
-
-afe_preg_lact <- demographic_preg_lact %>% 
-  left_join(tee_calc %>% dplyr::select(sex, age, TEE), 
-            by = c("sex", "age")) %>% 
-  mutate(TEE = TEE + 275 + under6_months*505 + over6_months*460) %>%
-  mutate(afe = TEE / 2291) %>%  # AFE = Total energy expenditure / 2291kcal/day
-  dplyr::select(y5_hhid, indidy5, afe)
-
-#-------------------------------------------------------------------------------
-
 # CALCULATE AFE FOR ALL OTHER INDIVIDUALS: 
 afe_other <- demographic_others %>% 
   left_join(tee_calc %>% dplyr::select(age, sex, TEE), 
@@ -256,7 +231,7 @@ afe_other <- demographic_others %>%
 
 # CALCULATE TOTAL AFE PER HOUSEHOLD: 
 
-hh_afe <- bind_rows(afeu2, afe_lact, afe_preg, afe_preg_lact, afe_other) %>% 
+hh_afe <- bind_rows(afeu2, afe_lact, afe_preg, afe_other) %>% 
   group_by(y5_hhid) %>% 
   summarise(afe = sum(afe, na.rm = TRUE))
 

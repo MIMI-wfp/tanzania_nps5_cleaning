@@ -34,6 +34,10 @@ source("src/afe_calculation.R")
 # Read in food consumption module: 
 tza_food_consumption <- read_csv("raw_data/hh_sec_j1.csv")
 
+# Read in food items dictionary: 
+food_items <- read_csv("raw_data/food-id.csv") %>% 
+  rename(item_code = itemcode)
+
 tza_food_consumption <- tza_food_consumption %>% 
   dplyr::select(y5_hhid, 
                 itemcode,
@@ -43,8 +47,9 @@ tza_food_consumption <- tza_food_consumption %>%
   rename(hhid = y5_hhid,
          item_code = itemcode,
          unit = hh_j02_1,
-         quantity = hh_j02_2)
+         quantity = hh_j02_2) %>% 
+  filter(!is.na(quantity)) %>%  # Remove entries for which quantity is NA: 
+  left_join(food_items, by = "item_code") # Add food item names
 
-# Remove entries for which quantity is NA: 
-tza_food_consumption <- tza_food_consumption %>% 
-  filter(!is.na(quantity))
+# Unit conversions available on MAPS GitHub, as well as edible portion ratios. 
+  
