@@ -31,15 +31,6 @@ rm(list= c("rq_packages", "installed_packages"))
 
 # READ IN DATA: 
 
-# Get AFEs for households in survey: 
-source("src/afe_calculation.R")
-
-# Note that - only 4,613 of the households have the demographic data required to 
-# calculate AFE, will need to check survey documentation to find out the reason 
-# why.
-
-hh_afe <- hh_afe %>% rename(hhid = y5_hhid)
-
 # Get edible portions: 
 
 edible_portion <- read_excel("raw_data/TNPSW5_averages.xlsx", 
@@ -139,12 +130,8 @@ rm(unit_conv)
 
 # Firstly mutate values so that they are presented per AFE, per day
 tza_food_consumption <- tza_food_consumption %>% 
-  left_join(hh_afe, by = "hhid") %>% 
-  mutate(quantity_g = quantity_g / (afe*7),
-         quantity_100g = quantity_100g / (afe*7)) %>% 
-  dplyr::select(-afe)
-
-rm(hh_afe)
+  mutate(quantity_g = quantity_g / 7,
+         quantity_100g = quantity_100g / 7)
 
 # Then check for any negative values:
 tza_food_consumption %>% 
