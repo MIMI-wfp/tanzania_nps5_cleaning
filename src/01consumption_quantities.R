@@ -4,7 +4,7 @@
 
 # Author: Mo Osman
 # Date created: 17-06-2024
-# Last edited: 23-07-2024
+# Last edited: 14-08-2024
 
 # In this script, I will extract and clean food consumption data from the Tanzania
 # NPS Wave 5:
@@ -81,8 +81,55 @@ tza_food_consumption <- read_csv("raw_data/hh_sec_ja1.csv") %>%
   left_join(edible_portion, by = "item_code") %>%  # Join edible portion ratio
   left_join(unit_conv, by = c("item_code", "unit")) %>%  # Join unit conversion factors
   select(hhid, item_code, itemname, everything())  # Re-order variables
-  
+
 rm(edible_portion, food_items)
+
+#-------------------------------------------------------------------------------
+
+# Some households used the old food consumption module (j1) - therefore need to 
+# read this data in too for pre-processing:
+
+# Get edible portions:
+edible_portionj1 <- read_csv("raw_data/ediblep_j1.csv") %>% 
+  dplyr::select(itemcode, mean_EP) %>% 
+  rename(item_code = itemcode,
+         edible_portion = mean_EP)
+
+# Get food groups data:
+food_groupsj1 <- read_csv("raw_data/food_groups_j1.csv") %>% 
+  dplyr::select(itemcode, food_group) %>% 
+  rename(item_code = itemcode)
+
+# Read in unit conversion factors: 
+unit_convj1 <- read_csv("raw_data/unitconv_j1.csv") %>% 
+  dplyr::select(itemcode, cons_unit, conv_fac) %>% 
+  rename(item_code = itemcode,
+         unit = cons_unit)
+
+# Read in food_items dictionary: 
+food_itemsj1 <- read_csv("raw_data/food-id_j1.csv") %>% 
+  rename(item_code = itemcode)
+
+# Read in food consumption module: 
+tza_food_consumption_j1 <- read_csv("raw_data/hh_sec_j1.csv") %>% 
+  dplyr::select(y5_hhid, 
+                itemcode,
+                hh_j01, # Did household consume? 
+                hh_j02_1, # Quantity consumed (UNIT) 
+                hh_j02_2) %>%  # Quantity consumed (QUANTITY) 
+  rename(hhid = y5_hhid,
+         item_code = itemcode,
+         consumed = hh_j01,
+         unit = hh_j02_1,
+         quantity = hh_j02_2) %>%
+  filter(consumed == 1) %>%  # Only keep entries where household consumed
+  select(-consumed) %>% # Drop the consumed column
+  left_join(food_itemsj1, by = "item_code") %>% # Join food item names
+  left_join(edible_portionj1, by = "item_code") %>%  # Join edible portion ratio
+  left_join(unit_convj1, by = c("item_code", "unit")) %>%  # Join unit conversion factors
+  select(hhid, item_code, itemname, everything())  # Re-order variables
+
+rm(edible_portionj1, food_itemsj1)
 
 #-------------------------------------------------------------------------------
 
@@ -126,9 +173,33 @@ rm(unit_conv)
 
 #-------------------------------------------------------------------------------
 
-# CLEAN INTAKE QUANTITIES: 
+# CALCULATE CONSUMPTION QUANTITIES FOR MODULE J1: 
 
-# Firstly mutate values so that they are presented per AFE, per day
+j1_na <- tza_food_consumption_j1 %>% 
+  filter(is.na(conv_fac)) %>% 
+  dplyr::select(hhid) %>% 
+  distinct()
+
+# There were 61 households that had insufficient data to calculate consumption
+# quantities, therefore remove these households from the dataset:
+tza_food_consumption_j1 <- tza_food_consumption_j1 %>% 
+  anti_join(j1_na, by = "hhid")
+
+tza_food_consumption_j1 <- tza_food_consumption_j1 %>% 
+  mutate(quantity_g = quantity * conv_fac * edible_portion) %>%
+  mutate(quantity_100g = quantity_g / 100) %>%
+  dplyr::select(hhid, item_code, itemname, quantity_g, quantity_100g)
+
+# Append the two datasets together:
+tza_food_consumption <- bind_rows(tza_food_consumption, tza_food_consumption_j1)
+
+rm(tza_food_consumption_j1, j1_na)
+
+#-------------------------------------------------------------------------------
+
+# CALCULATE CONSUMPTION PER DAY:
+
+# Firstly mutate values so that they are presented per day
 tza_food_consumption <- tza_food_consumption %>% 
   mutate(quantity_g = quantity_g / 7,
          quantity_100g = quantity_100g / 7)
@@ -137,97 +208,39 @@ tza_food_consumption <- tza_food_consumption %>%
 tza_food_consumption %>% 
   filter(quantity_g < 0 | quantity_100g < 0) # No negative values listed.
 
-# FILTER OUT EXTREME OUTLIERS:
-
-# To do this, firstly filter out extreme values by applying log10 trans:
-tza_food_consumption <- tza_food_consumption %>% 
-  mutate(log_quantity_g = log10(quantity_g))
-
-# Generate cut points for values that are >+2SDs from the mean intake of each food item:
-quant_cutpoints <- tza_food_consumption %>% 
-  group_by(item_code) %>% 
-  summarise(mean_log = mean(log_quantity_g, na.rm = TRUE),
-            sd_log = sd(log_quantity_g, na.rm = TRUE)) %>% 
-  mutate(upper_cut = mean_log + 2*sd_log) %>% 
-  dplyr::select(item_code, upper_cut)
-
-# Apply the cut points to the data, replacing quantities above the cut-point with NA: 
-tza_food_consumption <- tza_food_consumption %>% 
-  left_join(quant_cutpoints, by = "item_code") %>% 
-  mutate(quantity_g = case_when(
-    log_quantity_g > upper_cut ~ NA_real_,
-    TRUE ~ quantity_g
-  )) %>% 
-  dplyr::select(-log_quantity_g, -upper_cut)
-
-# If quantity_g is NA, then quantity_100g will also be NA:
-tza_food_consumption <- tza_food_consumption %>% 
-  mutate(quantity_100g = case_when(
-    is.na(quantity_g) ~ NA_real_,
-    TRUE ~ quantity_100g))
-
-# Replace NA values with median reported intake: 
-tza_food_consumption <- tza_food_consumption %>% 
-  group_by(item_code) %>% 
-  mutate(quantity_g = ifelse(is.na(quantity_g), median(quantity_g, na.rm = TRUE), quantity_g),
-         quantity_100g = ifelse(is.na(quantity_100g), median(quantity_100g, na.rm = TRUE), quantity_100g))
-
 #-------------------------------------------------------------------------------
 
-# CHECK INTAKE DISTRIBUTIONS
+# ADD FOOD GROUPS: 
 
-# Check intake distributions of top 10 consumed food items as these are going to 
-# be the most influential on the base model: 
-top10_consumed <- tza_food_consumption %>% 
-  group_by(item_code, itemname) %>% 
-  summarise(mean_intake = round(mean(quantity_g, na.rm = TRUE), digits = 1),
-            sd_intake = round(sd(quantity_g, na.rm = TRUE), digits = 1),
-            median_intake = round(median(quantity_g, na.rm = TRUE), digits = 1),
-            n = n()) %>% 
-  arrange(desc(n)) %>% 
-  ungroup() %>% 
-  head(10)
+food_groups <- bind_rows(food_groups, food_groupsj1) %>% 
+  distinct() 
 
-top10_consumed %>% 
-  dplyr::select(itemname, mean_intake, sd_intake, median_intake, n) %>% 
-  rename(`Food Item` = itemname,
-         `Mean intake (g)` = mean_intake,
-         `S.D.` = sd_intake,
-         `Median intake (g)` = median_intake,
-         `n households` = n) %>% gt() 
-
-# The values all appear plausible, I will additionally produce histograms as an 
-# additional check: 
-
-intake_histogram <- function(code, itemname) {
-  tza_food_consumption %>% 
-    filter(item_code == code) %>% 
-    ggplot(aes(x = quantity_g)) +
-    geom_histogram(bins = 30, fill = "skyblue", color = "black") +
-    # xlim(0, 600) + ylim(0,2000) +
-    labs(title = paste("Histogram of Intake Quantity for:", itemname),
-         x = "Intake Quantity (grams), per AFE/day",
-         y = "Frequency")
-}
-
-# Store the outputs of this loop function in a list:
-top10_histograms <- lapply(1:10, function(i) intake_histogram(top10_consumed$item_code[i], 
-                                                              top10_consumed$itemname[i]))
-
-# Arrange these histograms into a single figure:
-top10_histograms <- do.call(gridExtra::grid.arrange, c(top10_histograms, ncol = 2))
-
-# These intake distributions look plausible and follow an expected distribution 
-# (normal distribution with a right skew).
-
-#-------------------------------------------------------------------------------
-
-# RENAME VARIABLES AND SAVE DATA: 
+# Add food-groups:  
 tza_food_consumption <- tza_food_consumption %>% 
   left_join(food_groups, by = "item_code") %>%
   dplyr::select(hhid, item_code, quantity_100g, food_group, quantity_g)
 
-write_csv(tza_food_consumption, "processed_data/tza_nps2021_food_consumption.csv")
+# Correct food group names so that they are consistent with the other countries: 
+tza_food_consumption <- tza_food_consumption %>%
+  mutate(food_group = case_when(
+    food_group == "Grains, roots, and tubers" ~ "grains_roots_tubers",
+    food_group == "Nuts and seeds" ~ "nuts_seeds",
+    food_group == "Dairy" ~ "dairy",
+    food_group == "Meat, poultry, and fish" ~ "meat_poultry_fish",
+    food_group == "Eggs" ~ "eggs",
+    food_group == "Dark leafy greens and vegetables" ~ "green_leafy_veg",
+    food_group == "Other Vitamin A-rich fruits and vegetables" ~ "vita_fruit_veg",
+    food_group == "Other vegetables" ~ "other_veg",
+    food_group == "Other fruits" ~ "other_fruit",
+    food_group == "Misc" ~ "misc",
+    TRUE ~ food_group
+  ))
+
+#-------------------------------------------------------------------------------
+
+# WRITE DATA: 
+
+# write_csv(tza_food_consumption, "processed_data/tza_nps2021_food_consumption.csv")
 
 rm(list = ls())
 

@@ -4,7 +4,7 @@
 
 # Author: Mo Osman
 # Date created: 17-06-2024
-# Last edited: 24-06-2024
+# Last edited: 14-08-2024
 
 # In this script, I will calculate AFE for households in the Tanzania NPS-5 survey:
 # https://microdata.worldbank.org/index.php/catalog/5639/data-dictionary
@@ -31,8 +31,8 @@ options(scipen = 10, digits = 3)
 
 # PAL = 1.76 (active/moderately active lifestyle) - reference: table 5.1 FAO/WHO/UNU (2004)
 
-# Average men's weight = 65kg (Assumed - HOWEVER need to revisit)
-# Average women's weight = 55kg (Assumed - HOWEVER need to revisit)
+# Average men's weight = 65kg (Assumed)
+# Average women's weight = 55kg (Assumed)
 
 # Average energy cost of lactation = 505kcal for first 6-months of lactation
 # 460kcal after 6-months of lactation (Chapter 7 in FAO/WHO/UNU (2004))
@@ -123,7 +123,11 @@ demographic_others <- demographic %>%
 
 # ESTIMATE ENERGY REQUIREMENTS AND AFE's FOR THOSE AGED < 24-months:
 
-# Assign energy requirements for different age groups: 
+# Assign energy requirements for different age groups - SOURCE: 
+# Book - Complementary feeding of young Children in Developing Countries, 
+# Table 10, page 51.
+# WHO 1998, edited by Kenneth Brown, Kathryn Dewey, Lindsay Allen
+
 u2 <- u2 %>%
   mutate(kcalreq = case_when(
     age_months <= 2 ~ 0,   # only breast feeding - no food intake
@@ -170,28 +174,6 @@ tee_calc <- tee_calc %>%
     sex == 2 & age >= 60 ~ 9.082 * meanw + 658.5,
     TRUE ~ NA)) %>% # Get TEE by multiplying BMR by PAL for over 18's: 
   mutate(TEE = ifelse(age > 18, BMR * PAL, TEE)) # 
-
-#-------------------------------------------------------------------------------
-
-# GETTING AVERAGE MEN'S AND WOMEN'S WEIGHTS TO INTEGRATE INTO ABOVE CALCULATIONS, 
-# ***** TO REVISIT *****
-
-# Weights are recorded in an unclear manner in the DHS - Revist: 
-# dhs <- read_dta("raw_data/TZHR82DT/TZHR82FL.dta")
-# 
-# # Extract weight variables for men from Tanzania DHS: 
-# dhs_women <- dhs %>% 
-#   dplyr::select(hhid, 
-#                 starts_with("ha0_"),
-#                 starts_with("ha1_"),
-#                 starts_with("ha2_"))
-# 
-# # Extract weight variables for men from Tanzania DHS: 
-# dhs_men <- dhs %>% 
-#   dplyr::select(hhid, 
-#                 starts_with("hb0_"),
-#                 starts_with("hb1_"),
-#                 starts_with("hb2_"))
 
 #-------------------------------------------------------------------------------
 
