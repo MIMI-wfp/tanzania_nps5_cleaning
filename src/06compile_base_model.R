@@ -12,7 +12,7 @@
 
 # INSTALL AND LOAD PACKAGES:
 
-rq_packages <- c("readr", "tidyverse")
+rq_packages <- c("readr", "tidyverse", "here")
 
 installed_packages <- rq_packages %in% rownames(installed.packages())
 if (any(installed_packages == FALSE)) {
@@ -49,12 +49,12 @@ rm(tza_hh_afe)
 tza_food_consumption <- tza_food_consumption %>% 
   mutate(log_quantity_g = log10(quantity_g))
 
-# Generate cut points for values that are >+2SDs from the mean intake of each food item:
+# Generate cut points for values that are >+3SDs from the mean intake of each food item:
 quant_cutpoints <- tza_food_consumption %>% 
   group_by(item_code) %>% 
   summarise(mean_log = mean(log_quantity_g, na.rm = TRUE),
             sd_log = sd(log_quantity_g, na.rm = TRUE)) %>% 
-  mutate(upper_cut = mean_log + 2*sd_log) %>% 
+  mutate(upper_cut = mean_log + 3*sd_log) %>% 
   dplyr::select(item_code, upper_cut)
 
 # Apply the cut points to the data, replacing quantities above the cut-point with NA: 
