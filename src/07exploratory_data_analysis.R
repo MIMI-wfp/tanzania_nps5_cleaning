@@ -4,14 +4,14 @@
 
 # Author: Mo Osman
 # Date created: 14-08-2024
-# Last edited: 
+# Last edited: 01-10-2024
 
 # In this script, I will perform exploratory analyses on the base models that have
 # been generated for the MIMI team using the Tanzania NPS wave 5 data.
 
 # INSTALL AND LOAD PACKAGES:
 
-rq_packages <- c("readr", "tidyverse", "ggplot2", "srvyr")
+rq_packages <- c("readr", "tidyverse", "ggplot2", "srvyr", "gt", "gridExtra")
 
 installed_packages <- rq_packages %in% rownames(installed.packages())
 if (any(installed_packages == FALSE)) {
@@ -24,7 +24,16 @@ rm(list= c("rq_packages", "installed_packages"))
 
 #-------------------------------------------------------------------------------
 
+# READ DATA: 
+tza_food_consumption <- read_csv("processed_data/tza_nps2021_food_consumption.csv")
+food_ids <- read_csv("raw_data/food-id.csv") %>% rename(item_code = itemcode)
 
+# Add item names to food consumption data: 
+tza_food_consumption <- tza_food_consumption %>% 
+  left_join(food_ids, by = "item_code")
+
+
+#-------------------------------------------------------------------------------
 
 # CHECK INTAKE DISTRIBUTIONS
 
